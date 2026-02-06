@@ -1,191 +1,89 @@
 #include <Wire.h>
 #include "HCPCA9685.h"
-#define  I2CAdd 0x40
-// C++ code
-/* Create an instance of the library */
 
-HCPCA9685 HCPCA9685(I2CAdd);
+#define PCA_ADDR 0x40
+#define MPU_ADDR 0x68
 
+HCPCA9685 pca(PCA_ADDR);
 
+// Servo pulse range
+#define SERVO_MIN 150
+#define SERVO_MAX 450
 
-const int MPU_addr=0x68;
-const int MPU_addr2=0x69;
-int16_t AcX,AcY,AcZ,Tmp,GyX,GyY,GyZ;
- 
-int minVal=265;
-int maxVal=402;
-long int Value1;
-long int Value2;
-long int Value3;
-long int Value4;
-long int Value5;
-String data1;
-String data2;
-String data3;
-String data4;
-String data5;
-String RefineFinger1;
-String RefineFinger2;
-String RefineFinger3;
-String RefineFinger4;
-String RefineFinger5;
-double x;
-double y;
-double z;
- 
-void setup(){
-//Rotation Mpu_6050 setup
-Wire.begin();
-Wire.beginTransmission(MPU_addr);
-Wire.write(0x6B);
-Wire.write(0);
-Wire.endTransmission(true);
-Serial.begin(9600);
-//Wire.begin();
-//Wire.beginTransmission(MPU_addr2);
-//Wire.write(0x6B);
-//Wire.write(0);
-//Wire.endTransmission(true);
+// Flex calibration
+int thumbMin  = 160, thumbMax  = 270;
+int indexMin  = 175, indexMax  = 320;
+int middleMin = 150, middleMax = 270;
+int ringMin   = 200, ringMax   = 290;
+int pinkyMin  = 280, pinkyMax  = 840;
 
-//Finger inputs setup declare
-pinMode(A0,INPUT);
-pinMode(A1,INPUT);
-pinMode(A2,INPUT);
-pinMode(A3,INPUT);
-pinMode(A4,INPUT);
-/* Initialise the library and set it to 'servo mode' */ 
-HCPCA9685.Init(SERVO_MODE);
+// Wrist range (gyro)
+int wristMin = -16000;
+int wristMax = 16000;
 
-/* Wake the device up */
-HCPCA9685.Sleep(false);
+// MPU values
+int16_t AcX, AcY, AcZ, GyX, GyY, GyZ;
+
+void setup() {
+  Wire.begin();
+  Serial.begin(9600);
+
+  // PCA9685
+  pca.Init(SERVO_MODE);
+  pca.Sleep(false);
+
+  // MPU6050 wake
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x6B);
+  Wire.write(0);
+  Wire.endTransmission(true);
+
+  pinMode(A0, INPUT);
+  pinMode(A1, INPUT);
+  pinMode(A2, INPUT);
+  pinMode(A3, INPUT);
+  pinMode(A4, INPUT);
 }
 
+void loop() {
+  moveFinger(A0, thumbMin,  thumbMax,  0);
+  moveFinger(A1, indexMin,  indexMax,  1);
+  moveFinger(A2, middleMin, middleMax, 2);
+  moveFinger(A3, ringMin,   ringMax,   3);
+  moveFinger(A4, pinkyMin,  pinkyMax,  4);
 
+  readMPU();
+  moveWrist(GyX, 5);
 
-
-void loop(){
-int arr1[2];
-int arr2[2];
-arr1[0] = SetUpMPU6050(MPU_addr);
-arr2[0] = SetUpMPU6050_2(MPU_addr2);
-Finger1();
-Finger2();
-Finger3();
-Finger4();
-Finger5();
-delay(400 );
-
+  delay(20);
 }
 
+void moveFinger(int pin, int minVal, int maxVal, int channel) {
+  int val = analogRead(pin);
+  val = constrain(val, minVal, maxVal);
 
-
-
-
-int SetUpMPU6050(const int MPU_1){
-Wire.beginTransmission(MPU_1);
-Wire.write(0x3B);
-Wire.endTransmission(false);
-Wire.requestFrom(MPU_1,14,true);
-AcX=Wire.read()<<8|Wire.read();
-AcY=Wire.read()<<8|Wire.read();
-AcZ=Wire.read()<<8|Wire.read();
-int xAng = map(AcX,minVal,maxVal,-90,90); 
-int yAng = map(AcY,minVal,maxVal,-90,90);
-int temperature = Wire.read()<<8 | Wire.read(); // reading registers: 0x41 (TEMP_OUT_H) and 0x42 (TEMP_OUT_L)
-int gyro_x = Wire.read()<<8 | Wire.read(); // reading registers: 0x43 (GYRO_XOUT_H) and 0x44 (GYRO_XOUT_L)
-int gyro_y = Wire.read()<<8 | Wire.read(); // reading registers: 0x45 (GYRO_YOUT_H) and 0x46 (GYRO_YOUT_L)
-int gyro_z = (Wire.read()<<8 | Wire.read()) / 131.0; // reading registers: 0x47 (GYRO_ZOUT_H) and 0x48 (GYRO_ZOUT_L)
-  
-int zAng = map(AcZ,minVal,maxVal,-90,90);
- 
-x= RAD_TO_DEG * (atan2(-yAng, -zAng)+PI);
-y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI);
-z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
-//Serial.println(x);
-//Serial.println(y);
-Serial.println(x);
-return x, y, gyro_z;
- 
-delay(300);
+  int pos = map(val, minVal, maxVal, SERVO_MIN, SERVO_MAX);
+  pca.Servo(channel, pos);
 }
 
-int SetUpMPU6050_2(const int MPU_2){
-Wire.beginTransmission(MPU_2);
-Wire.write(0x3B);
-Wire.endTransmission(false);
-Wire.requestFrom(MPU_2,14,true);
-AcX=Wire.read()<<8|Wire.read();
-AcY=Wire.read()<<8|Wire.read();
-AcZ=Wire.read()<<8|Wire.read();
-int xAng = map(AcX,minVal,maxVal,-90,90);
-int yAng = map(AcY,minVal,maxVal,-90,90);
-int temperature = Wire.read()<<8 | Wire.read(); // reading registers: 0x41 (TEMP_OUT_H) and 0x42 (TEMP_OUT_L)
-int gyro_x = Wire.read()<<8 | Wire.read(); // reading registers: 0x43 (GYRO_XOUT_H) and 0x44 (GYRO_XOUT_L)
-int gyro_y = Wire.read()<<8 | Wire.read(); // reading registers: 0x45 (GYRO_YOUT_H) and 0x46 (GYRO_YOUT_L)
-int gyro_z = (Wire.read()<<8 | Wire.read()) / 131.0; // reading registers: 0x47 (GYRO_ZOUT_H) and 0x48 (GYRO_ZOUT_L)
-  
-int zAng = map(AcZ,minVal,maxVal,-90,90);
- 
-x= RAD_TO_DEG * (atan2(-yAng, -zAng)+PI);
-y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI);
-z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
+void readMPU() {
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x3B);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU_ADDR, 14, true);
 
-
-return x, z, gyro_z;
+  AcX = Wire.read() << 8 | Wire.read();
+  AcY = Wire.read() << 8 | Wire.read();
+  AcZ = Wire.read() << 8 | Wire.read();
+  Wire.read(); Wire.read(); // temp
+  GyX = Wire.read() << 8 | Wire.read();
+  GyY = Wire.read() << 8 | Wire.read();
+  GyZ = Wire.read() << 8 | Wire.read();
 }
 
-void Finger1(){
-//data1 = analogRead(A0);
-//Serial.println(data1);
-//Value1 = atol(data1.c_str());
-unsigned int Pos;
-Pos =400 ;
-//Pos = map(Value1, 740, 820, 0, 450);
-//Serial.println(Pos);
-
-HCPCA9685.Servo(0, Pos);
-
-
-}
-
-void Finger2(){
-data1 = analogRead(A1);
-//Serial.println(data1);
-Value1 = atol(data1.c_str());
-unsigned int Pos;
-
-Pos = map(Value1, 720, 800, 0, 450);
-Serial.println(Pos);
-HCPCA9685.Servo(1, Pos);
-}
-
-void Finger3(){
-data1 = analogRead(A2);
-//Serial.println(data1);
-Value1 = atol(data1.c_str());
-unsigned int Pos;
-
-Pos = map(Value1, 732, 874, 0, 450);
-Serial.println(Pos);
-HCPCA9685.Servo(2, Pos);
-}
-void Finger4(){
-data1 = analogRead(A3);
-//Serial.println(data1);
-Value1 = atol(data1.c_str());
-unsigned int Pos;
-
-Pos = map(Value1, 680, 845, 0, 450);
-Serial.println(Pos);
-HCPCA9685.Servo(3, Pos);
-}
-void Finger5(){
-data1 = analogRead(A4);
-//Serial.println(data1);
-Value1 = atol(data1.c_str());
-unsigned int Pos;
-
-Pos = map(Value1, 742, 860, 0, 450);
-Serial.println(Pos);
-HCPCA9685.Servo(4, Pos);
+void moveWrist(int gyroVal, int channel) {
+  gyroVal = constrain(gyroVal, wristMin, wristMax);
+  int pos = map(gyroVal, wristMin, wristMax, SERVO_MIN, SERVO_MAX);
+  pca.Servo(channel, pos);
+}vo(4, Pos);
 }
